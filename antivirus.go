@@ -12,31 +12,36 @@ import (
 
 func main() {
 	maliciousHashesFile := "maliciousHashes.txt"
-
 	var wg sync.WaitGroup
 
 	files := RetrieveFilenames(&wg)
 
 	maliciousHashes := RetrieveMalwareSignatures(maliciousHashesFile)
 
-	for _, file := range files {
+	for _, file := range extractKeys(files) {
 		if file == "" {
 			wg.Done()
 			continue
 		}
-		input := fmt.Sprintf("./FilePool/%s", file)
+		input := fmt.Sprintf(file + "/" + files[file][0])
+		fmt.Println("--------------")
 		fmt.Println(input)
+		fmt.Println("--------------")
+		// fmt.Println(input)
 		go func() {
 			out2, err2 := exec.Command("md5", input).Output()
 			if err2 != nil {
-				log.Fatal(err2)
+				wg.Done()
+				fmt.Println("Finished with (failed) " + input)
+				return
+				// log.Fatal(err2)
 			}
 			fileHash := strings.TrimSpace(string(strings.Split(string(out2), " = ")[1]))
 
 			if (listContains(fileHash, maliciousHashes)) {
 				fmt.Printf("Found suspicious file: %s", string(out2))
 			}
-
+			fmt.Println("Finished with " + input)
 			wg.Done()
 		}()
 	}
@@ -74,12 +79,35 @@ func RetrieveMalwareSignatures(filename string) []string {
 		return strings.Split(string(result), "\n")
 }
 
-func RetrieveFilenames(wg *sync.WaitGroup) []string {
-	out, err := exec.Command("ls", "./FilePool").Output()
+func RetrieveFilenames(wg *sync.WaitGroup) map[string][]string {
+	fmt.Println("Getting target files...")
+	m := make(map[string][]string)
+
+	out, err := exec.Command("ls", "-Ra", "./Target").Output()
 	if err != nil {
+		fmt.Println(err)
 		log.Fatal(err)
 	}
-	lines := strings.Split(string(out), "\n")
+	lines := strings.Split(string(out), "\n./")
+
+	for _, directory := range lines[1:] {
+		dirname := strings.Split(directory, "\n")[0]
+		dirname = dirname[0:len(dirname)-1]
+
+		m[dirname] = strings.Split(directory, "\n")[3:]
+	}
+	fmt.Println(m)
 	wg.Add(len(lines))
-	return lines
+
+
+	fmt.Println("Found target files...")
+	return m
+}
+
+func extractKeys(m map[string][]string) []string {
+	keys := []string{}
+	for k := range m {
+    keys = append(keys, k)
+	}
+	return keys
 }
